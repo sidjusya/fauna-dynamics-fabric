@@ -29,7 +29,7 @@ jobs:
           echo '=== fabric metadata ==='
           cat src/main/resources/fabric.mod.json
           echo '=== animal controller ==='
-          sed -n '1,320p' src/main/java/com/faunadynamics/behavior/AnimalBehaviorController.java
+          sed -n '1,650p' src/main/java/com/faunadynamics/behavior/AnimalBehaviorController.java
           echo '=== animation states ==='
           cat src/main/java/com/faunadynamics/behavior/AnimationStates.java
           echo '=== tags ==='
