@@ -99,3 +99,40 @@ Path("src/main/resources/faunadynamics.client.mixins.json").write_text(
 )
 
 print("Connected server animation events to client render states and registered native model mixins.")
+
+# Fix mixin package ownership: shared interfaces must live outside the mixin namespace.
+mixin_dir = Path("src/main/java/com/faunadynamics/client/mixin")
+accessor_dir = Path("src/main/java/com/faunadynamics/client/accessor")
+accessor_dir.mkdir(parents=True, exist_ok=True)
+for class_name in ("FdRenderStateAccess", "ModelPartChildrenAccessor"):
+    old_path = mixin_dir / (class_name + ".java")
+    new_path = accessor_dir / (class_name + ".java")
+    accessor_source = old_path.read_text(encoding="utf-8")
+    accessor_source = accessor_source.replace("package com.faunadynamics.client.mixin;", "package com.faunadynamics.client.accessor;", 1)
+    new_path.write_text(accessor_source, encoding="utf-8")
+    old_path.unlink()
+
+for java_path in Path("src/main/java/com/faunadynamics/client").rglob("*.java"):
+    java_source = java_path.read_text(encoding="utf-8")
+    java_source = java_source.replace("import com.faunadynamics.client.mixin.ModelPartChildrenAccessor;", "import com.faunadynamics.client.accessor.ModelPartChildrenAccessor;")
+    if "FdRenderStateAccess" in java_source and "package com.faunadynamics.client.accessor;" not in java_source:
+        if "import com.faunadynamics.client.accessor.FdRenderStateAccess;" not in java_source:
+            java_source = java_source.replace("package com.faunadynamics.client.mixin;", "package com.faunadynamics.client.mixin;\n\nimport com.faunadynamics.client.accessor.FdRenderStateAccess;", 1)
+    java_path.write_text(java_source, encoding="utf-8")
+
+client_config["package"] = "com.faunadynamics.client"
+client_config["client"] = [
+    "mixin.EntityEventMixin",
+    "mixin.EntityRenderStateMixin",
+    "mixin.EntityRenderDispatcherMixin",
+    "accessor.ModelPartChildrenAccessor",
+    "mixin.QuadrupedModelMixin",
+    "mixin.AbstractEquineModelMixin",
+    "mixin.AdultFelineModelMixin",
+    "mixin.BabyFelineModelMixin",
+    "mixin.WolfModelMixin",
+    "mixin.ChickenModelMixin",
+    "mixin.SheepModelMixin"
+]
+Path("src/main/resources/faunadynamics.client.mixins.json").write_text(json.dumps(client_config, indent=2) + "\n", encoding="utf-8")
+print("Moved shared interfaces outside the Mixin package and corrected client mixin registration.")
