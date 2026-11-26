@@ -1,6 +1,9 @@
 from pathlib import Path
 import json
 
+NL = chr(10)
+BS = chr(92)
+
 ROOT = Path("src/main/java/com/faunadynamics/behavior")
 controller = ROOT / "AnimalBehaviorController.java"
 source = controller.read_text(encoding="utf-8")
