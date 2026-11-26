@@ -254,9 +254,9 @@ import net.minecraft.world.level.Level;
 
 /** Persistent vanilla entity tags used for lightweight per-animal traits. */
 public final class AnimalTags {
-    private static final String SEX_SET = \\"faunadynamics.sex_set\\";
-    private static final String MALE = \\"faunadynamics.male\\";
-    private static final String SEX_REVISION = \\"faunadynamics.sex_revision_2\\";
+    private static final String SEX_SET = "faunadynamics.sex_set";
+    private static final String MALE = "faunadynamics.male";
+    private static final String SEX_REVISION = "faunadynamics.sex_revision_2";
 
     private AnimalTags() {
     }
@@ -362,7 +362,7 @@ public abstract class EntityRenderStateMixin implements FdRenderStateAccess {
 
 dispatcher_path = Path('src/main/java/com/faunadynamics/client/mixin/EntityRenderDispatcherMixin.java')
 dispatcher_source = dispatcher_path.read_text(encoding='utf-8')
-dispatcher_source = dispatcher_source.replace('import com.faunadynamics.client.ClientAnimationData;', 'import com.faunadynamics.client.ClientAnimationData;\\nimport com.faunadynamics.api.client.FdRenderStateAccess;')
+dispatcher_source = dispatcher_source.replace('import com.faunadynamics.client.ClientAnimationData;', 'import com.faunadynamics.client.ClientAnimationData;' + NL + 'import com.faunadynamics.api.client.FdRenderStateAccess;')
 dispatcher_source = dispatcher_source.replace('access.faunadynamics$setData(id, ClientAnimationData.action(id), ClientAnimationData.isMale(id));', 'access.faunadynamics$setData(id, ClientAnimationData.action(id), ClientAnimationData.isMale(id), ClientAnimationData.actionAgeTicks(id, entity.tickCount));')
 dispatcher_path.write_text(dispatcher_source, encoding='utf-8')
 
@@ -387,7 +387,7 @@ public abstract class AbstractEquineModelMixin<T extends EquineRenderState> {
     @Shadow @Final protected ModelPart rightHindLeg;
     @Shadow @Final protected ModelPart leftHindLeg;
 
-    @Inject(method = \\"setupAnim\\", at = @At(\\"TAIL\\"))
+    @Inject(method = "setupAnim", at = @At("TAIL"))
     private void faunadynamics$animateHorseKick(T state, CallbackInfo ci) {
         FdRenderStateAccess access = (FdRenderStateAccess) state;
         if (access.faunadynamics$getAction() != AnimationStates.HORSE_KICK) return;
