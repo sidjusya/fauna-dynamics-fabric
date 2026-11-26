@@ -21,6 +21,22 @@ jobs:
           tar -xzf .github/fauna-dynamics-source.tar.gz -C "$RUNNER_TEMP/fauna-source"
           cp -a "$RUNNER_TEMP/fauna-source/fauna-dynamics-fabric/." "$GITHUB_WORKSPACE/"
 
+      - name: Inspect source layout for animation integration
+        run: |
+          find src/main/java -type f -name '*.java' -print
+          echo '=== mixin config ==='
+          cat src/main/resources/faunadynamics.mixins.json
+          echo '=== fabric metadata ==='
+          cat src/main/resources/fabric.mod.json
+          echo '=== animal controller ==='
+          sed -n '1,320p' src/main/java/com/faunadynamics/behavior/AnimalBehaviorController.java
+          echo '=== animation states ==='
+          cat src/main/java/com/faunadynamics/behavior/AnimationStates.java
+          echo '=== tags ==='
+          cat src/main/java/com/faunadynamics/behavior/AnimalTags.java
+          echo '=== entrypoint ==='
+          cat src/main/java/com/faunadynamics/FaunaDynamics.java
+
       - name: Apply Minecraft 26.3 compatibility fixes
         run: python3 .github/apply-26.3-compat.py
 
