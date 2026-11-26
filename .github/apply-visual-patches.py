@@ -415,7 +415,8 @@ public abstract class AbstractEquineModelMixin<T extends EquineRenderState> {
 
 # Remove any old extra-chick handler from active mixins; vanilla hatch now makes one chick.
 main_mixins_path = Path('src/main/resources/faunadynamics.mixins.json')
-main_mixins = json.loads(main_mixins_path.read_text(encoding='utf-8'))
+main_mixins_raw = main_mixins_path.read_text(encoding='utf-8').replace(BS + BS + 'n', NL).replace(BS + 'n', NL)
+main_mixins = json.loads(main_mixins_raw)
 main_mixins['mixins'] = [name for name in main_mixins.get('mixins', []) if name != 'ThrownEggMixin']
 main_mixins_path.write_text(json.dumps(main_mixins, indent=2) + NL, encoding='utf-8')
 print('Applied sex migration, timed horse kick, increased ram/bull odds, and vanilla single-chick egg hatching.')
