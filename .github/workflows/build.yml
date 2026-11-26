@@ -62,6 +62,25 @@ jobs:
       - name: Build mod
         run: gradle --no-daemon clean build
 
+      - name: Inspect Minecraft model field inheritance
+        shell: bash
+        run: |
+          GAME_JAR="$(find .gradle/loom-cache/minecraftMaven/net/minecraft -name 'minecraft-merged-*-26.3.jar' -print -quit)"
+          test -n "$GAME_JAR"
+          echo "Mapped Minecraft jar: $GAME_JAR"
+          for target in \
+            net.minecraft.client.model.animal.feline.AdultFelineModel \
+            net.minecraft.client.model.animal.feline.BabyFelineModel \
+            net.minecraft.client.model.animal.feline.FelineModel \
+            net.minecraft.client.model.animal.wolf.WolfModel \
+            net.minecraft.client.model.QuadrupedModel \
+            net.minecraft.client.model.animal.sheep.SheepModel \
+            net.minecraft.client.model.animal.equine.AbstractEquineModel \
+            net.minecraft.client.model.animal.chicken.ChickenModel; do
+            echo "=== $target ==="
+            javap -classpath "$GAME_JAR" -p "$target" 2>&1 || true
+          done
+
       - name: Client launch smoke test (Xvfb + Mesa Vulkan)
         shell: bash
         run: |
