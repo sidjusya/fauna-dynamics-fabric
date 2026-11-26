@@ -71,6 +71,7 @@ jobs:
           for target in \
             net.minecraft.client.model.animal.feline.AdultFelineModel \
             net.minecraft.client.model.animal.feline.BabyFelineModel \
+            net.minecraft.client.model.animal.feline.AbstractFelineModel \
             net.minecraft.client.model.animal.feline.FelineModel \
             net.minecraft.client.model.animal.wolf.WolfModel \
             net.minecraft.client.model.QuadrupedModel \
