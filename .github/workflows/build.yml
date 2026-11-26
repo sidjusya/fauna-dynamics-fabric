@@ -36,6 +36,13 @@ jobs:
           cat src/main/java/com/faunadynamics/behavior/AnimalTags.java
           echo '=== entrypoint ==='
           cat src/main/java/com/faunadynamics/FaunaDynamics.java
+          echo '=== spawn egg mixin ==='
+          cat src/main/java/com/faunadynamics/mixin/AnimalBreedingMixin.java
+          echo '=== thrown egg mixin ==='
+          cat src/main/java/com/faunadynamics/mixin/ThrownEggMixin.java
+          echo '=== config ==='
+          cat src/main/java/com/faunadynamics/config/FaunaConfig.java
+
 
       - name: Apply Minecraft 26.3 compatibility fixes
         run: python3 .github/apply-26.3-compat.py
