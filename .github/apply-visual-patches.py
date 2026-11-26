@@ -185,3 +185,29 @@ if accessor_entry not in mixins:
     mixins.append(accessor_entry)
 metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 print("Separated ordinary render-state API and model accessor mixin into independent packages/configs.")
+
+# Higher ram/bull ratios and a separate, faster ram social-check cadence.
+config_path = Path('src/main/java/com/faunadynamics/config/FaunaConfig.java')
+config_source = config_path.read_text(encoding='utf-8')
+config_source = config_source.replace('public float ramRatio = 0.30F;', 'public float ramRatio = 0.55F;')
+config_source = config_source.replace('public float bullRatio = 0.15F;', 'public float bullRatio = 0.45F;')
+config_source = config_source.replace('public float ramFightChance = 0.08F;', 'public float ramFightChance = 0.30F;')
+if 'public int ramCheckTicks' not in config_source:
+    config_source = config_source.replace('public float ramFightChance = 0.30F;', 'public float ramFightChance = 0.30F;\\n    public int ramCheckTicks = 40;')
+if 'ramCheckTicks = roundToFiveTicks' not in config_source:
+    config_source = config_source.replace('ramFightChance = clamp(ramFightChance, 0.0F, 1.0F);', 'ramFightChance = clamp(ramFightChance, 0.0F, 1.0F);\\n        ramCheckTicks = roundToFiveTicks(clamp(ramCheckTicks, 20, 20 * 60));')
+if 'if (current.ramRatio == 0.30F)' not in config_source:
+    config_source = config_source.replace('            current.clamp();', '            if (current.ramRatio == 0.30F) current.ramRatio = 0.55F;\\n            if (current.bullRatio == 0.15F) current.bullRatio = 0.45F;\\n            if (current.ramFightChance == 0.08F) current.ramFightChance = 0.30F;\\n            if (current.ramCheckTicks <= 0) current.ramCheckTicks = 40;\\n            current.clamp();')
+config_path.write_text(config_source, encoding='utf-8')
+
+source = controller.read_text(encoding='utf-8')
+source = source.replace('if (now % config.socialCheckTicks != 0L || level.getRandom().nextFloat() >= config.ramFightChance) return;', 'if (now % config.ramCheckTicks != 0L || level.getRandom().nextFloat() >= config.ramFightChance) return;')
+source = source.replace('nearestEntity(sheep, Sheep.class, 10.0,', 'nearestEntity(sheep, Sheep.class, 14.0,')
+source = source.replace('nearestEntity(sheep, Sheep.class, 8.0,', 'nearestEntity(sheep, Sheep.class, 12.0,')
+controller.write_text(source, encoding='utf-8')
+
+# Remove the extra siblings added by the custom thrown-chicken-egg hatch hook.
+main_mixins_path = Path('src/main/resources/faunadynamics.mixins.json')
+main_mixins = json.loads(main_mixins_path.read_text(encoding='utf-8'))
+main_mixins['mixins'] = [name for name in main_mixins.get('mixins', []) if name != 'ThrownEggMixin']
+main_mixins_path.write_text(json.dumps(main_mixins, indent=2) + '\\n', encoding='utf-8')
