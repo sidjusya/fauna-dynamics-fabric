@@ -23,8 +23,8 @@ public abstract class SheepModelMixin {
         Map<String, ModelPart> children = ((ModelPartChildrenAccessor) (Object) this.head).faunadynamics$getChildren();
         if (children.containsKey("faunadynamics_left_horn")) return;
 
-        ModelPart left = faunadynamics$makeHorn(-1.0F);
-        ModelPart right = faunadynamics$makeHorn(1.0F);
+        ModelPart left = faunadynamics$makeHorn();
+        ModelPart right = faunadynamics$makeHorn();
         left.setPos(-2.6F, -3.4F, -1.2F);
         right.setPos(2.6F, -3.4F, -1.2F);
         left.zRot = -0.48F;
@@ -48,15 +48,14 @@ public abstract class SheepModelMixin {
         }
     }
 
-    private static ModelPart faunadynamics$makeHorn(float direction) {
-        return new ModelPart(
-                CubeListBuilder.create()
-                        .texOffs(0, 16)
-                        .addBox(-0.65F, -0.5F, -0.5F, 1.3F, 2.8F, 1.3F)
-                        .texOffs(0, 16)
-                        .addBox(-0.55F, 1.6F, -0.45F, 1.1F, 1.3F, 1.1F)
-                        .build(),
-                new HashMap<>()
-        );
+    private static ModelPart faunadynamics$makeHorn() {
+        var definitions = CubeListBuilder.create()
+                .texOffs(0, 16)
+                .addBox(-0.65F, -0.5F, -0.5F, 1.3F, 2.8F, 1.3F)
+                .texOffs(0, 16)
+                .addBox(-0.55F, 1.6F, -0.45F, 1.1F, 1.3F, 1.1F)
+                .getCubes();
+        var bakedCubes = definitions.stream().map(cube -> cube.bake(64, 32)).toList();
+        return new ModelPart(bakedCubes, new HashMap<>());
     }
 }
