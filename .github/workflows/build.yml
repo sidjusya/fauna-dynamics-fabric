@@ -77,7 +77,8 @@ jobs:
             net.minecraft.client.model.QuadrupedModel \
             net.minecraft.client.model.animal.sheep.SheepModel \
             net.minecraft.client.model.animal.equine.AbstractEquineModel \
-            net.minecraft.client.model.animal.chicken.ChickenModel; do
+            net.minecraft.client.model.animal.chicken.ChickenModel \
+            net.minecraft.client.model.geom.ModelPart; do
             echo "=== $target ==="
             javap -classpath "$GAME_JAR" -p "$target" 2>&1 || true
           done
@@ -96,7 +97,7 @@ jobs:
           export LIBGL_ALWAYS_SOFTWARE=1
           vulkaninfo --summary || true
           set +e
-          timeout 150s gradle --no-daemon runClient > client-smoke.log 2>&1
+          timeout 70s gradle --no-daemon runClient > client-smoke.log 2>&1
           status=$?
           set -e
           echo "runClient exit status: $status"
