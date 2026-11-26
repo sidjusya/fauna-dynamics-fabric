@@ -62,15 +62,25 @@ jobs:
       - name: Build mod
         run: gradle --no-daemon clean build
 
-      - name: Client launch smoke test (Xvfb)
+      - name: Client launch smoke test (Xvfb + Mesa Vulkan)
         shell: bash
         run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb mesa-vulkan-drivers vulkan-tools
+          test -f /usr/share/vulkan/icd.d/lvp_icd.json
+          Xvfb :99 -screen 0 854x480x24 +extension GLX +render -noreset > /tmp/fauna-xvfb.log 2>&1 &
+          xvfb_pid=$!
+          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
+          export DISPLAY=:99
+          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          export LIBGL_ALWAYS_SOFTWARE=1
+          vulkaninfo --summary || true
           set +e
-          timeout 240s xvfb-run -a gradle --no-daemon runClient > client-smoke.log 2>&1
+          timeout 150s gradle --no-daemon runClient > client-smoke.log 2>&1
           status=$?
           set -e
           echo "runClient exit status: $status"
-          tail -n 180 client-smoke.log
+          tail -n 220 client-smoke.log
           if grep -E -i 'IllegalClassLoadError|InvalidInjectionException|Mixin apply failed|Critical injection failure|NoSuchMethodError|NoSuchFieldError|MixinTransformerError|Exception loading class' client-smoke.log; then
             echo "Client smoke test found a fatal Mixin/classloading error."
             exit 1
