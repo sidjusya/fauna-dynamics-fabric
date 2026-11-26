@@ -136,3 +136,52 @@ client_config["client"] = [
 ]
 Path("src/main/resources/faunadynamics.client.mixins.json").write_text(json.dumps(client_config, indent=2) + "\n", encoding="utf-8")
 print("Moved shared interfaces outside the Mixin package and corrected client mixin registration.")
+
+# Keep the accessor mixin in its own package/config; the shared render-state
+# interface is a plain Java API and must not belong to any configured mixin package.
+api_dir = Path("src/main/java/com/faunadynamics/api/client")
+model_accessor_dir = Path("src/main/java/com/faunadynamics/accessor/client")
+api_dir.mkdir(parents=True, exist_ok=True)
+model_accessor_dir.mkdir(parents=True, exist_ok=True)
+fd_old = Path("src/main/java/com/faunadynamics/client/accessor/FdRenderStateAccess.java")
+fd_source = fd_old.read_text(encoding="utf-8").replace("package com.faunadynamics.client.accessor;", "package com.faunadynamics.api.client;", 1)
+(api_dir / "FdRenderStateAccess.java").write_text(fd_source, encoding="utf-8")
+fd_old.unlink()
+mp_old = Path("src/main/java/com/faunadynamics/client/accessor/ModelPartChildrenAccessor.java")
+mp_source = mp_old.read_text(encoding="utf-8").replace("package com.faunadynamics.client.accessor;", "package com.faunadynamics.accessor.client;", 1)
+(model_accessor_dir / "ModelPartChildrenAccessor.java").write_text(mp_source, encoding="utf-8")
+mp_old.unlink()
+
+for java_path in Path("src/main/java").rglob("*.java"):
+    java_source = java_path.read_text(encoding="utf-8")
+    java_source = java_source.replace("import com.faunadynamics.client.accessor.FdRenderStateAccess;", "import com.faunadynamics.api.client.FdRenderStateAccess;")
+    java_source = java_source.replace("import com.faunadynamics.client.accessor.ModelPartChildrenAccessor;", "import com.faunadynamics.accessor.client.ModelPartChildrenAccessor;")
+    if "FdRenderStateAccess" in java_source and "package com.faunadynamics.api.client;" not in java_source:
+        if "import com.faunadynamics.api.client.FdRenderStateAccess;" not in java_source:
+            package_line = next((line for line in java_source.splitlines() if line.startswith("package ")), None)
+            if package_line:
+                java_source = java_source.replace(package_line, package_line + "\n\nimport com.faunadynamics.api.client.FdRenderStateAccess;", 1)
+    java_path.write_text(java_source, encoding="utf-8")
+
+client_config["package"] = "com.faunadynamics.client.mixin"
+client_config["client"] = [
+    "EntityEventMixin", "EntityRenderStateMixin", "EntityRenderDispatcherMixin",
+    "QuadrupedModelMixin", "AbstractEquineModelMixin", "AdultFelineModelMixin",
+    "BabyFelineModelMixin", "WolfModelMixin", "ChickenModelMixin", "SheepModelMixin"
+]
+Path("src/main/resources/faunadynamics.client.mixins.json").write_text(json.dumps(client_config, indent=2) + "\n", encoding="utf-8")
+accessor_config = {
+    "required": True,
+    "package": "com.faunadynamics.accessor.client",
+    "compatibilityLevel": "JAVA_25",
+    "client": ["ModelPartChildrenAccessor"],
+    "injectors": {"defaultRequire": 1}
+}
+Path("src/main/resources/faunadynamics.accessor.mixins.json").write_text(json.dumps(accessor_config, indent=2) + "\n", encoding="utf-8")
+metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+mixins = metadata.setdefault("mixins", [])
+accessor_entry = {"config": "faunadynamics.accessor.mixins.json", "environment": "client"}
+if accessor_entry not in mixins:
+    mixins.append(accessor_entry)
+metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+print("Separated ordinary render-state API and model accessor mixin into independent packages/configs.")
