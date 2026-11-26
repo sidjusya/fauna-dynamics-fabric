@@ -208,7 +208,8 @@ controller.write_text(source, encoding='utf-8')
 
 # Remove the extra siblings added by the custom thrown-chicken-egg hatch hook.
 main_mixins_path = Path('src/main/resources/faunadynamics.mixins.json')
-main_mixins = json.loads(main_mixins_path.read_text(encoding='utf-8'))
+main_mixins_raw = main_mixins_path.read_text(encoding='utf-8').replace(BS + BS + 'n', NL).replace(BS + 'n', NL)
+main_mixins = json.loads(main_mixins_raw)
 main_mixins['mixins'] = [name for name in main_mixins.get('mixins', []) if name != 'ThrownEggMixin']
 main_mixins_path.write_text(json.dumps(main_mixins, indent=2) + '\\n', encoding='utf-8')
 
@@ -218,7 +219,7 @@ NL = chr(10)
 BS = chr(92)
 
 config_path = Path('src/main/java/com/faunadynamics/config/FaunaConfig.java')
-config_source = config_path.read_text(encoding='utf-8').replace(BS + 'n', NL)
+config_source = config_path.read_text(encoding='utf-8').replace(BS + BS + 'n', NL).replace(BS + 'n', NL)
 config_source = config_source.replace('public float ramRatio = 0.30F;', 'public float ramRatio = 0.60F;')
 config_source = config_source.replace('public float ramRatio = 0.55F;', 'public float ramRatio = 0.60F;')
 config_source = config_source.replace('public float bullRatio = 0.15F;', 'public float bullRatio = 0.50F;')
