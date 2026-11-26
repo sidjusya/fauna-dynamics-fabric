@@ -170,8 +170,7 @@ client_config["package"] = "com.faunadynamics.client.mixin"
 client_config["client"] = [
     "EntityEventMixin", "EntityRenderStateMixin", "EntityRenderDispatcherMixin",
     "AbstractFelineModelMixin", "QuadrupedModelMixin", "AbstractEquineModelMixin",
-    "AdultFelineModelMixin", "BabyFelineModelMixin", "WolfModelMixin", "ChickenModelMixin",
-    "SheepModelMixin"
+    "AdultFelineModelMixin", "BabyFelineModelMixin", "WolfModelMixin", "ChickenModelMixin"
 ]
 Path("src/main/resources/faunadynamics.client.mixins.json").write_text(json.dumps(client_config, indent=2) + "\n", encoding="utf-8")
 accessor_config = {
@@ -447,8 +446,11 @@ horse_path.write_text(horse_source, encoding="utf-8")
 # The dedicated SheepModel hook adds the horns directly to the sheep head model.
 # QuadrupedModelMixin also knows how to toggle them; both paths share the same names
 # and guard against adding duplicate parts.
-if "SheepModelMixin" not in client_config["client"]:
-    client_config["client"].append("SheepModelMixin")
+# Sheep horns are added by QuadrupedModelMixin, which can safely shadow the
+# inherited head field on its actual declaring class. Do not register the
+# redundant SheepModelMixin: SheepModel inherits head and Mixin @Shadow cannot
+# bind that field directly on the subclass.
+client_config["client"] = [name for name in client_config["client"] if name != "SheepModelMixin"]
 Path("src/main/resources/faunadynamics.client.mixins.json").write_text(
     json.dumps(client_config, indent=2) + NL, encoding="utf-8"
 )
