@@ -166,8 +166,8 @@ for java_path in Path("src/main/java").rglob("*.java"):
 client_config["package"] = "com.faunadynamics.client.mixin"
 client_config["client"] = [
     "EntityEventMixin", "EntityRenderStateMixin", "EntityRenderDispatcherMixin",
-    "QuadrupedModelMixin", "AbstractEquineModelMixin", "AdultFelineModelMixin",
-    "BabyFelineModelMixin", "WolfModelMixin", "ChickenModelMixin", "SheepModelMixin"
+    "AbstractFelineModelMixin", "QuadrupedModelMixin", "AbstractEquineModelMixin",
+    "AdultFelineModelMixin", "BabyFelineModelMixin", "WolfModelMixin", "ChickenModelMixin"
 ]
 Path("src/main/resources/faunadynamics.client.mixins.json").write_text(json.dumps(client_config, indent=2) + "\n", encoding="utf-8")
 accessor_config = {
