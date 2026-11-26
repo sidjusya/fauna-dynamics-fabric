@@ -464,3 +464,448 @@ controller_source = controller_source.replace(old_ram_shove, "shovePair(sheep, r
 controller.write_text(controller_source, encoding="utf-8")
 
 print("Applied rear-hoof kick direction, registered sheep ram horns, and strengthened ram collision knockback.")
+
+
+# Horse-only edition: discard all non-equine behavior, model hooks and config.
+from pathlib import Path
+import json
+
+java_root = Path("src/main/java/com/faunadynamics")
+horse_root = java_root / "behavior"
+client_root = java_root / "client"
+resource_root = Path("src/main/resources")
+
+(horse_root / "AnimationStates.java").write_text("""package com.faunadynamics.behavior;
+
+/** Animation IDs used by the horse-only edition. */
+public final class AnimationStates {
+    public static final int NONE = 0;
+    public static final int HORSE_KICK = 1;
+
+    private AnimationStates() {
+    }
+}
+""", encoding="utf-8")
+
+(horse_root / "AnimalBehaviorController.java").write_text("""package com.faunadynamics.behavior;
+
+import com.faunadynamics.config.FaunaConfig;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.animal.equine.Horse;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/** The only behavior in this edition: wild adult horses defend themselves with a rear kick. */
+public final class AnimalBehaviorController {
+    private static final Map<UUID, Long> NEXT_ACTION_TICK = new HashMap<>();
+    private static final Map<UUID, Long> ACTION_END_TICK = new HashMap<>();
+    private static final Map<UUID, Integer> ACTIVE_ACTIONS = new HashMap<>();
+    private static long lastCleanupTick;
+
+    private AnimalBehaviorController() {
+    }
+
+    public static void register() {
+        ServerTickEvents.END_LEVEL_TICK.register(AnimalBehaviorController::tickLevel);
+    }
+
+    private static void tickLevel(ServerLevel level) {
+        long now = level.getGameTime();
+        if (now % 5L != 0L) return;
+
+        for (Entity entity : level.getAllEntities()) {
+            if (entity instanceof Horse horse) {
+                clearExpiredAction(horse, now);
+                tickHorse(level, horse, now);
+            }
+        }
+
+        if (now - lastCleanupTick >= 1200L) {
+            lastCleanupTick = now;
+            NEXT_ACTION_TICK.keySet().removeIf(uuid -> level.getEntityInAnyDimension(uuid) == null);
+            ACTION_END_TICK.keySet().removeIf(uuid -> level.getEntityInAnyDimension(uuid) == null);
+            ACTIVE_ACTIONS.keySet().removeIf(uuid -> level.getEntityInAnyDimension(uuid) == null);
+        }
+    }
+
+    private static void tickHorse(ServerLevel level, Horse horse, long now) {
+        FaunaConfig config = FaunaConfig.get();
+        if (horse.isBaby() || horse.isTamed() || horse.isVehicle() || !horse.onGround()
+                || now % config.horseKickCheckTicks != 0L
+                || now < NEXT_ACTION_TICK.getOrDefault(horse.getUUID(), 0L)) return;
+        if (level.getRandom().nextFloat() >= config.horseKickChance) return;
+
+        LivingEntity threat = nearestThreat(horse, 4.25);
+        if (threat == null) return;
+
+        Vec3 away = threat.position().subtract(horse.position());
+        if (away.lengthSqr() > 0.0001) away = away.normalize();
+        playHorseKick(horse, now, 22L);
+        threat.hurtServer(level, level.damageSources().mobAttack(horse), config.horseKickDamage);
+        if (config.horseKickSlownessTicks > 0) {
+            threat.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, config.horseKickSlownessTicks, 0), horse);
+        }
+        threat.push(away.scale(0.8).add(0.0, 0.22, 0.0));
+        NEXT_ACTION_TICK.put(horse.getUUID(), now + 60L);
+    }
+
+    private static LivingEntity nearestThreat(Horse horse, double range) {
+        LivingEntity nearest = null;
+        double bestDistance = range * range;
+        for (LivingEntity candidate : horse.level().getEntitiesOfClass(
+                LivingEntity.class, horse.getBoundingBox().inflate(range),
+                entity -> entity != horse && entity.isAlive()
+                        && (entity instanceof Player || entity instanceof Mob)
+                        && isBehind(horse, entity))) {
+            double distance = horse.distanceToSqr(candidate);
+            if (distance < bestDistance) {
+                nearest = candidate;
+                bestDistance = distance;
+            }
+        }
+        return nearest;
+    }
+
+    private static boolean isBehind(Entity horse, Entity candidate) {
+        Vec3 towardCandidate = candidate.position().subtract(horse.position());
+        if (towardCandidate.lengthSqr() < 0.0001) return false;
+        return horse.getLookAngle().dot(towardCandidate.normalize()) < -0.15;
+    }
+
+    private static void playHorseKick(Horse horse, long now, long duration) {
+        ACTIVE_ACTIONS.put(horse.getUUID(), AnimationStates.HORSE_KICK);
+        ACTION_END_TICK.put(horse.getUUID(), now + duration);
+        if (horse.level() instanceof ServerLevel serverLevel) {
+            serverLevel.broadcastEntityEvent(horse, (byte) (100 + AnimationStates.HORSE_KICK));
+        }
+    }
+
+    private static void clearExpiredAction(Mob horse, long now) {
+        Long endTick = ACTION_END_TICK.get(horse.getUUID());
+        if (endTick != null && now >= endTick) {
+            Integer previous = ACTIVE_ACTIONS.remove(horse.getUUID());
+            ACTION_END_TICK.remove(horse.getUUID());
+            if (previous != null && horse.level() instanceof ServerLevel serverLevel) {
+                serverLevel.broadcastEntityEvent(horse, (byte) 100);
+            }
+        }
+    }
+}
+""", encoding="utf-8")
+
+config_path = java_root / "config/FaunaConfig.java"
+config_path.write_text("""package com.faunadynamics.config;
+
+import com.faunadynamics.FaunaDynamics;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import net.fabricmc.loader.api.FabricLoader;
+
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+/** User-editable settings for horse defensive kicks only. */
+public final class FaunaConfig {
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("fauna-dynamics.json");
+
+    public float horseKickChance = 0.20F;
+    public float horseKickDamage = 9.0F;
+    public int horseKickSlownessTicks = 60;
+    public int horseKickCheckTicks = 100;
+
+    private static FaunaConfig current = new FaunaConfig();
+
+    private FaunaConfig() {
+    }
+
+    public static FaunaConfig get() {
+        return current;
+    }
+
+    public static void load() {
+        try {
+            Files.createDirectories(FILE.getParent());
+            if (Files.exists(FILE)) {
+                try (Reader reader = Files.newBufferedReader(FILE)) {
+                    FaunaConfig loaded = GSON.fromJson(reader, FaunaConfig.class);
+                    if (loaded != null) current = loaded;
+                }
+            }
+            current.clamp();
+            try (Writer writer = Files.newBufferedWriter(FILE)) {
+                GSON.toJson(current, writer);
+            }
+            FaunaDynamics.LOGGER.info("Loaded horse-only configuration from {}", FILE);
+        } catch (Exception exception) {
+            current = new FaunaConfig();
+            FaunaDynamics.LOGGER.error("Could not load Fauna Dynamics configuration; using defaults.", exception);
+        }
+    }
+
+    private void clamp() {
+        horseKickChance = clamp(horseKickChance, 0.0F, 1.0F);
+        horseKickDamage = clamp(horseKickDamage, 0.0F, 40.0F);
+        horseKickSlownessTicks = clamp(horseKickSlownessTicks, 0, 20 * 60);
+        horseKickCheckTicks = Math.max(20, Math.round(clamp(horseKickCheckTicks, 20, 20 * 60) / 5.0F) * 5);
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+}
+""", encoding="utf-8")
+
+# Keep the render-state bridge minimal: only the currently playing horse animation.
+Path("src/main/java/com/faunadynamics/api/client/FdRenderStateAccess.java").write_text("""package com.faunadynamics.api.client;
+
+public interface FdRenderStateAccess {
+    void faunadynamics$setData(int entityId, int action, int actionAgeTicks);
+    int faunadynamics$getAction();
+    int faunadynamics$getActionAgeTicks();
+}
+""", encoding="utf-8")
+
+Path("src/main/java/com/faunadynamics/client/ClientAnimationData.java").write_text("""package com.faunadynamics.client;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/** Client-side clock for horse kick animation cues. */
+public final class ClientAnimationData {
+    private static final Map<Integer, ActionCue> ACTIONS = new HashMap<>();
+
+    private ClientAnimationData() {
+    }
+
+    public static void accept(int entityId, byte rawEvent, int entityTick) {
+        int event = rawEvent & 0xFF;
+        if (event == 100) ACTIONS.remove(entityId);
+        else if (event == 101) ACTIONS.put(entityId, new ActionCue(1, entityTick));
+        if (ACTIONS.size() > 4096) ACTIONS.clear();
+    }
+
+    public static int action(int entityId) {
+        ActionCue cue = ACTIONS.get(entityId);
+        return cue == null ? 0 : cue.action();
+    }
+
+    public static int actionAgeTicks(int entityId, int entityTick) {
+        ActionCue cue = ACTIONS.get(entityId);
+        return cue == null ? 0 : Math.max(0, entityTick - cue.startedAtTick());
+    }
+
+    public static void forget(int entityId) {
+        ACTIONS.remove(entityId);
+    }
+
+    private record ActionCue(int action, int startedAtTick) {
+    }
+}
+""", encoding="utf-8")
+
+event_path = Path("src/main/java/com/faunadynamics/client/mixin/EntityEventMixin.java")
+event_path.write_text("""package com.faunadynamics.client.mixin;
+
+import com.faunadynamics.client.ClientAnimationData;
+import net.minecraft.world.entity.Entity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+@Mixin(Entity.class)
+public abstract class EntityEventMixin {
+    @Inject(method = "handleEntityEvent", at = @At("HEAD"))
+    private void faunadynamics$receiveHorseAnimationEvent(byte event, CallbackInfo ci) {
+        Entity entity = (Entity) (Object) this;
+        if (entity.level().isClientSide()) {
+            ClientAnimationData.accept(entity.getId(), event, entity.tickCount);
+        }
+    }
+
+    @Inject(method = "onClientRemoval", at = @At("TAIL"))
+    private void faunadynamics$forgetClientEntity(CallbackInfo ci) {
+        Entity entity = (Entity) (Object) this;
+        ClientAnimationData.forget(entity.getId());
+    }
+}
+""", encoding="utf-8")
+
+state_path = Path("src/main/java/com/faunadynamics/client/mixin/EntityRenderStateMixin.java")
+state_path.write_text("""package com.faunadynamics.client.mixin;
+
+import com.faunadynamics.api.client.FdRenderStateAccess;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
+
+@Mixin(EntityRenderState.class)
+public abstract class EntityRenderStateMixin implements FdRenderStateAccess {
+    @Unique private int faunadynamics$action;
+    @Unique private int faunadynamics$actionAgeTicks;
+
+    @Override
+    public void faunadynamics$setData(int entityId, int action, int actionAgeTicks) {
+        this.faunadynamics$action = action;
+        this.faunadynamics$actionAgeTicks = actionAgeTicks;
+    }
+
+    @Override public int faunadynamics$getAction() { return this.faunadynamics$action; }
+    @Override public int faunadynamics$getActionAgeTicks() { return this.faunadynamics$actionAgeTicks; }
+}
+""", encoding="utf-8")
+
+dispatcher_path = Path("src/main/java/com/faunadynamics/client/mixin/EntityRenderDispatcherMixin.java")
+dispatcher_path.write_text("""package com.faunadynamics.client.mixin;
+
+import com.faunadynamics.api.client.FdRenderStateAccess;
+import com.faunadynamics.client.ClientAnimationData;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.world.entity.Entity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+@Mixin(EntityRenderDispatcher.class)
+public abstract class EntityRenderDispatcherMixin {
+    @Inject(method = "extractEntity", at = @At("TAIL"))
+    private void faunadynamics$copyHorseAnimation(Entity entity, float partialTicks,
+            CallbackInfoReturnable<EntityRenderState> cir) {
+        EntityRenderState renderState = cir.getReturnValue();
+        if (renderState instanceof LivingEntityRenderState) {
+            int id = entity.getId();
+            FdRenderStateAccess access = (FdRenderStateAccess) renderState;
+            access.faunadynamics$setData(
+                    id,
+                    ClientAnimationData.action(id),
+                    ClientAnimationData.actionAgeTicks(id, entity.tickCount)
+            );
+        }
+    }
+}
+""", encoding="utf-8")
+
+# Recreate the horse model hook with the tested event-clock pose and corrected rear-leg direction.
+horse_path = Path("src/main/java/com/faunadynamics/client/mixin/AbstractEquineModelMixin.java")
+horse_path.write_text("""package com.faunadynamics.client.mixin;
+
+import com.faunadynamics.api.client.FdRenderStateAccess;
+import com.faunadynamics.behavior.AnimationStates;
+import net.minecraft.client.model.animal.equine.AbstractEquineModel;
+import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.renderer.entity.state.EquineRenderState;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+@Mixin(AbstractEquineModel.class)
+public abstract class AbstractEquineModelMixin<T extends EquineRenderState> {
+    @Shadow @Final protected ModelPart body;
+    @Shadow @Final protected ModelPart rightHindLeg;
+    @Shadow @Final protected ModelPart leftHindLeg;
+
+    @Inject(method = "setupAnim", at = @At("TAIL"))
+    private void faunadynamics$animateHorseKick(T state, CallbackInfo ci) {
+        FdRenderStateAccess access = (FdRenderStateAccess) state;
+        if (access.faunadynamics$getAction() != AnimationStates.HORSE_KICK) return;
+
+        float progress = Math.min(22.0F, access.faunadynamics$getActionAgeTicks()) / 22.0F;
+        float lift = smoothstep(0.0F, 0.28F, progress) * (1.0F - smoothstep(0.68F, 0.96F, progress));
+        float kick = smoothstep(0.18F, 0.36F, progress) * (1.0F - smoothstep(0.48F, 0.72F, progress));
+
+        this.body.y -= 5.2F * lift;
+        this.body.xRot += 0.48F * lift;
+        this.leftHindLeg.xRot += 0.38F * lift + 1.55F * kick;
+        this.rightHindLeg.xRot += 0.42F * lift + 1.62F * kick;
+        this.leftHindLeg.zRot += 0.08F * kick;
+        this.rightHindLeg.zRot -= 0.08F * kick;
+    }
+
+    private static float smoothstep(float edge0, float edge1, float value) {
+        float t = Math.max(0.0F, Math.min(1.0F, (value - edge0) / (edge1 - edge0)));
+        return t * t * (3.0F - 2.0F * t);
+    }
+}
+""", encoding="utf-8")
+
+# Keep only four client hooks required for horse kick presentation.
+client_config = {
+    "required": True,
+    "package": "com.faunadynamics.client.mixin",
+    "compatibilityLevel": "JAVA_25",
+    "client": [
+        "EntityEventMixin",
+        "EntityRenderStateMixin",
+        "EntityRenderDispatcherMixin",
+        "AbstractEquineModelMixin"
+    ],
+    "injectors": {"defaultRequire": 1}
+}
+(resource_root / "faunadynamics.client.mixins.json").write_text(
+    json.dumps(client_config, indent=2) + NL, encoding="utf-8"
+)
+
+metadata_path = resource_root / "fabric.mod.json"
+metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+metadata["mixins"] = ["faunadynamics.client.mixins.json"]
+metadata_path.write_text(json.dumps(metadata, indent=2) + NL, encoding="utf-8")
+
+# Remove all feature-specific code that is no longer part of the horse-only build.
+keep_client_mixins = {
+    "EntityEventMixin.java",
+    "EntityRenderStateMixin.java",
+    "EntityRenderDispatcherMixin.java",
+    "AbstractEquineModelMixin.java"
+}
+for java_path in (java_root / "client/mixin").glob("*.java"):
+    if java_path.name not in keep_client_mixins:
+        java_path.unlink()
+for obsolete in [
+    java_root / "behavior/AnimalTags.java",
+    java_root / "api/client/FdFelineModelAccess.java",
+    java_root / "mixin/AnimalBreedingMixin.java",
+    java_root / "mixin/ThrownEggMixin.java",
+]:
+    if obsolete.exists():
+        obsolete.unlink()
+for folder in [
+    java_root / "mixin",
+    java_root / "accessor",
+]:
+    if folder.exists():
+        for child in folder.rglob("*"):
+            if child.is_file():
+                child.unlink()
+        for child in sorted(folder.rglob("*"), reverse=True):
+            if child.is_dir():
+                child.rmdir()
+        folder.rmdir()
+for config_name in ["faunadynamics.mixins.json", "faunadynamics.accessor.mixins.json"]:
+    obsolete = resource_root / config_name
+    if obsolete.exists():
+        obsolete.unlink()
+
+print("Reduced Fauna Dynamics to horse kick behavior, horse animation and four required client mixins.")
