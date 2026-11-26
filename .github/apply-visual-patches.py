@@ -170,7 +170,8 @@ client_config["package"] = "com.faunadynamics.client.mixin"
 client_config["client"] = [
     "EntityEventMixin", "EntityRenderStateMixin", "EntityRenderDispatcherMixin",
     "AbstractFelineModelMixin", "QuadrupedModelMixin", "AbstractEquineModelMixin",
-    "AdultFelineModelMixin", "BabyFelineModelMixin", "WolfModelMixin", "ChickenModelMixin"
+    "AdultFelineModelMixin", "BabyFelineModelMixin", "WolfModelMixin", "ChickenModelMixin",
+    "SheepModelMixin"
 ]
 Path("src/main/resources/faunadynamics.client.mixins.json").write_text(json.dumps(client_config, indent=2) + "\n", encoding="utf-8")
 accessor_config = {
@@ -420,3 +421,44 @@ main_mixins = json.loads(main_mixins_raw)
 main_mixins['mixins'] = [name for name in main_mixins.get('mixins', []) if name != 'ThrownEggMixin']
 main_mixins_path.write_text(json.dumps(main_mixins, indent=2) + NL, encoding='utf-8')
 print('Applied sex migration, timed horse kick, increased ram/bull odds, and vanilla single-chick egg hatching.')
+
+
+# Follow-up fixes from in-game testing: move both rear hoof/leg assemblies backward
+# during the kick, and explicitly register the sheep-specific horn hook.
+horse_source = horse_path.read_text(encoding="utf-8")
+horse_source = horse_source.replace(
+    "this.leftHindLeg.xRot -= 0.30F * lift + 1.45F * kick;",
+    "this.leftHindLeg.xRot += 0.38F * lift + 1.55F * kick;"
+)
+horse_source = horse_source.replace(
+    "this.rightHindLeg.xRot -= 0.26F * lift + 1.30F * kick;",
+    "this.rightHindLeg.xRot += 0.42F * lift + 1.62F * kick;"
+)
+horse_source = horse_source.replace(
+    "this.leftHindLeg.zRot -= 0.10F * kick;",
+    "this.leftHindLeg.zRot += 0.08F * kick;"
+)
+horse_source = horse_source.replace(
+    "this.rightHindLeg.zRot += 0.10F * kick;",
+    "this.rightHindLeg.zRot -= 0.08F * kick;"
+)
+horse_path.write_text(horse_source, encoding="utf-8")
+
+# The dedicated SheepModel hook adds the horns directly to the sheep head model.
+# QuadrupedModelMixin also knows how to toggle them; both paths share the same names
+# and guard against adding duplicate parts.
+if "SheepModelMixin" not in client_config["client"]:
+    client_config["client"].append("SheepModelMixin")
+Path("src/main/resources/faunadynamics.client.mixins.json").write_text(
+    json.dumps(client_config, indent=2) + NL, encoding="utf-8"
+)
+
+# Make ram impacts clearly separate the two animals instead of only nudging them.
+controller_source = controller.read_text(encoding="utf-8")
+old_ram_shove = "shovePair(sheep, rival, 0.48);"
+if old_ram_shove not in controller_source:
+    raise SystemExit("Ram shove call was not found; refusing to silently skip knockback tuning.")
+controller_source = controller_source.replace(old_ram_shove, "shovePair(sheep, rival, 0.92);", 1)
+controller.write_text(controller_source, encoding="utf-8")
+
+print("Applied rear-hoof kick direction, registered sheep ram horns, and strengthened ram collision knockback.")
